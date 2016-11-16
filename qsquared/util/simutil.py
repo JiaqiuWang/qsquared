@@ -14,9 +14,9 @@ def estimate_frequency(tidx):
 
     >>> import pandas as pd
     >>> import numpy as np
-    >>> import simutil
+    >>> import qsquared.util.simutil as simutil
     >>> tidx = pd.date_range('2008-01-01', '2019-12-31', freq='B')
-    >>> util.estimate_frequency(tidx)
+    >>> simutil.estimate_frequency(tidx)
     261.0
 
     """
@@ -71,13 +71,13 @@ def random_returns(securities, tidx, annual_return=.04, annual_volatility=.12):
     Examples
 
     >>> import numpy as np
-    >>> import simutil
+    >>> import qsquared.util.simutil as simutil
     >>> np.random.seed([3,1415])
     >>> securities = list('AB')
     >>> tidx = ['2011-12-31', '2012-06-30',
     >>>         '2012-12-31', '2013-06-30',
     >>>         '2013-12-31', '2014-06-30']
-    >>> simutil.randn_returns(list('AB'), tidx)
+    >>> simutil.random_returns(list('AB'), tidx)
     Id                 A         B
     2011-12-31  0.000000  0.000000
     2012-06-30 -0.148795 -0.084260

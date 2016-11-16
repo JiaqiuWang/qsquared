@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
-import itertools
-from . import simutil as su
+
+from .util import simutil
+from .util import util
 
 
 class Qube(object):
@@ -77,8 +78,8 @@ class Qube(object):
         rs = self.returns.stack()
         ds = rs.index.get_level_values(0)
         gr = rs.groupby([ds, qs]).mean().unstack()
-        gr.columns = su.qcats(n, values=gr.columns)
-        return gr
+        gr.columns = simutil.qcats(n, values=gr.columns)
+        return gr.sort_index(1)
 
     def by_quintile(self):
         """convenience method to return self.greturns(n=5)
@@ -99,5 +100,24 @@ class Qube(object):
         rs = self.returns.stack()
         ds = rs.index.get_level_values(0)
         return rs.groupby([ds, ks]).mean().unstack()
+
+    def holdings(self, n, i, k):
+        r = self.greturns(n)
+        h = r.iloc[i::k]
+        h.values.fill(1 / n)
+        return h
+
+    def floated(self, n, i, k):
+        r = self.greturns(n)
+        h = self.holdings(n, i, k)
+        return util.floated(h, r, normalize=True)
+
+    def floated_aggregate_returns(self, n, i, k):
+        r = self.greturns(n)
+        h = self.floated(n, i, k)
+        return r.mul(h).sum(1)
+
+
+
 
 
