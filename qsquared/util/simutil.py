@@ -131,3 +131,75 @@ def qcats(n, values=None, prefix='q', suffix='', naught=1):
         values = categories
     return pd.Categorical(values, categories, True)
 
+
+def annualized_returns(returns):
+    """calculate annualized returns.
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame or pd.Series
+
+    :rtype: pd.Series
+    """
+    tidx = returns.index
+    freq = estimate_frequency(tidx)
+    num = len(tidx)
+    return returns.add(1).prod() ** (freq / num) - 1
+
+
+def annualized_risk(returns):
+    """calculate annualized risk.
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame or pd.Series
+
+    :rtype: pd.Series
+    """
+    tidx = returns.index
+    freq = estimate_frequency(tidx)
+    return returns.std().mul(np.sqrt(freq))
+
+
+def sharpe_ratio(returns):
+    """calculate sharpe ratio.
+    this is a simplistic approach where we take the annualized return
+    divided by the annualized risk.
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame or pd.Series
+
+    :rtype: pd.Series
+    """
+    return annualized_returns(returns) / annualized_risk(returns)
+
+
+def annualized_active_returns(returns, benchmarks):
+    """get difference in annualized returns of `returns` and `benchmarks`
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame
+
+    :param benchmarks: time series of returns
+    :type benchmarks: pd.DataFrame
+
+    :rtype: pd.Series
+    """
+    ann_returns = annualized_returns(returns)
+    bm_returns = annualized_returns(benchmarks)
+    return ann_returns.sub(bm_returns)
+
+
+def annualized_active_risk(returns, benchmarks):
+    """get annualized standard deviation of active returns or `returns`
+    relative to `benchmarks`
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame
+
+    :param benchmarks: time series of returns
+    :type benchmarks: pd.DataFrame
+
+    :rtype: pd.Series
+    """
+    axis = 0 if isinstance(benchmarks, pd.Series) else 1
+    return annualized_risk(returns.sub(benchmarks, axis=axis))
+
