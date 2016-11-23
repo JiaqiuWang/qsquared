@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def estimate_frequency(tidx):
@@ -143,7 +144,11 @@ def annualized_returns(returns):
     tidx = returns.index
     freq = estimate_frequency(tidx)
     num = len(tidx)
-    return returns.add(1).prod() ** (freq / num) - 1
+    ar = returns.add(1).prod() ** (freq / num) - 1
+    if isinstance(ar, pd.Series):
+        return ar.rename('Annualized Active Return')
+    else:
+        return ar
 
 
 def annualized_risk(returns):
@@ -156,7 +161,8 @@ def annualized_risk(returns):
     """
     tidx = returns.index
     freq = estimate_frequency(tidx)
-    return returns.std().mul(np.sqrt(freq))
+    ar = returns.std().mul(np.sqrt(freq))
+    return ar.rename('Annualized Risk')
 
 
 def sharpe_ratio(returns):
@@ -169,7 +175,8 @@ def sharpe_ratio(returns):
 
     :rtype: pd.Series
     """
-    return annualized_returns(returns) / annualized_risk(returns)
+    sr = annualized_returns(returns) / annualized_risk(returns)
+    return sr.rename('Sharpe Ratio')
 
 
 def annualized_active_returns(returns, benchmarks):
@@ -185,7 +192,11 @@ def annualized_active_returns(returns, benchmarks):
     """
     ann_returns = annualized_returns(returns)
     bm_returns = annualized_returns(benchmarks)
-    return ann_returns.sub(bm_returns)
+    ar = ann_returns.sub(bm_returns)
+    if isinstance(ar, pd.Series):
+        return ar.rename('Annualized Active Return')
+    else:
+        return ar
 
 
 def annualized_active_risk(returns, benchmarks):
@@ -201,7 +212,23 @@ def annualized_active_risk(returns, benchmarks):
     :rtype: pd.Series
     """
     axis = 0 if isinstance(benchmarks, pd.Series) else 1
-    return annualized_risk(returns.sub(benchmarks, axis=axis))
+    ar = annualized_risk(returns.sub(benchmarks, axis=axis))
+    return ar.rename('Annualized Tracking Error')
+
+
+def information_ratio(returns, benchmarks):
+    """calculate information ratio.
+    this is a simplistic approach where we take the annualized active return
+    divided by the annualized active risk (tracking error).
+
+    :param returns: time series of returns
+    :type returns: pd.DataFrame or pd.Series
+
+    :rtype: pd.Series
+    """
+    sr = annualized_active_returns(returns, benchmarks) \
+         / annualized_active_risk(returns, benchmarks)
+    return sr.rename('Information Ratio')
 
 
 def max_draw_down_absolute(returns):
@@ -348,3 +375,56 @@ def cumargmax(a, return_cummax=False):
         return x, m
     else:
         return x
+
+
+def max_dd_plot(returns, benchmarks, figsize=(8, 6)):
+    """plots maximum draw downs
+
+    :param returns: absolute returns
+    :type returns: pd.DataFrame
+
+    :param benchmarks: used to compare against returns
+    :type benchmarks: pd.DataFrame
+
+    :param figsize: tuple specifying figure size width by height
+    :type figsize: (int, int)
+
+    :rtype: plt.Figure
+    """
+
+    def format_yticks(ax, p=1, f=8):
+        from matplotlib.ticker import FuncFormatter
+        fmt = FuncFormatter(
+            lambda x, _: '{{:0.{}f}}%'.format(p).format(x * 100))
+        ax.tick_params(axis='y', which='major', labelsize=f)
+        ax.yaxis.set_major_formatter(fmt)
+        ax.set_yticks(ax.get_yticks()[2:])
+
+    p = returns.add(1).cumprod().sub(1)
+    b = benchmarks.add(1).cumprod().sub(1)
+    b_flag = isinstance(b, pd.Series)
+    axis = 1 - b_flag
+    active = p.sub(b, axis=1 - b_flag)
+    active_dd = max_draw_down(returns, benchmarks)
+    abslut_dd = max_draw_down(returns)
+
+    k = returns.shape[1]
+
+    fig, axes = plt.subplots(k, 1, figsize=figsize)
+
+    for i, ax in enumerate(axes[::-1]):
+        active.iloc[:, i].plot(ax=ax)
+        a_ = p.iloc[:, i].plot(ax=ax, secondary_y=True)
+        act_s, act_e = active_dd[['Begin', 'End']].iloc[i]
+        tot_s, tot_e = abslut_dd[['Begin', 'End']].iloc[i]
+        ax.axvline(act_s, color='orange')
+        ax.axvline(act_e, color='orange', ls='-.')
+        ax.axvline(tot_s, color='aqua')
+        ax.axvline(tot_e, color='aqua', ls='-.')
+        ax.set_ylabel(returns.columns[i])
+        format_yticks(ax)
+        format_yticks(a_)
+
+    fig.suptitle('Draw Down', fontsize=10)
+    plt.subplots_adjust(top=.95, hspace=0)
+    return fig

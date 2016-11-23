@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 from .util import simutil
 from .util import util
 
 
 class Qube(object):
-    def __init__(self, signals, returns):
+    def __init__(self, signals, returns, bench=None):
         """Qube main container for all relevant data to conduct quantile
         analysis.
 
@@ -28,8 +29,17 @@ class Qube(object):
 
         :rtype: Qube
         """
+        # clean data
+        keep = signals.fillna(0).eq(0).sum(1).le(1)
+        signals = signals.loc[keep]
+        returns = returns.loc[signals.index]
+
         self.signals = signals
         self.returns = returns
+        if bench is None:
+            bench = returns.mean(1).rename('Benchmark')
+        bench = bench.loc[signals.index]
+        self.bench = bench
 
         self.__cuts = {}
         self.__pnls = {}
@@ -193,7 +203,7 @@ class Qube(object):
             self.__pnls[key] = pnl
         return self.__pnls[key]
 
-    def horizon_returns(self, n, k):
+    def horizon_returns(self, n, k, dropna=True):
         """generate the floated panel of returns and take the mean return
         across the `k` iterations of the `k` period horizon.
 
@@ -203,10 +213,140 @@ class Qube(object):
         :param k: periods between rebalances (horizon)
         :type k: int
 
+        :param dropna: boolean flag whether to drop na rows (default True)
+        :type dropna: bool
+
         :rtype: pd.DataFrame
         """
         pnl = self.floated_panel_returns(n, k)
-        return pnl.mean('items', skipna=False).dropna()
+        df = pnl.mean('items', skipna=False)
+        if dropna:
+            df = df.dropna()
+        return df
+
+    def horizon_stats(self, n, k):
+        """calculate stats for n groups, rebalancing every k periods
+
+        :param n: number of groups
+        :type n: int
+
+        :param k: number of periods between rebalances (horizon)
+        :type k: int
+
+        :type: pd.DataFrame
+        """
+        hr = self.horizon_returns(n, k)
+        df = pd.DataFrame([], columns=hr.columns)
+        df = df.append(simutil.annualized_returns(hr))
+        df = df.append(simutil.annualized_risk(hr))
+        df = df.append(simutil.sharpe_ratio(hr))
+        df = df.append(simutil.annualized_active_returns(hr, self.bench))
+        df = df.append(simutil.annualized_active_risk(hr, self.bench))
+        df = df.append(simutil.information_ratio(hr, self.bench))
+        return df
+
+    def horizons_stats(self, n):
+        """iterate over pre-specified set of horizons and calculate
+        horizon stats with n groups
+
+        :param n: number of groups
+        :type n: int
+
+        :rtype: pd.DataFrame
+        """
+        k = (1, 2, 3, 6, 12)
+        hdf = pd.concat(
+            [self.horizon_stats(n, i) for i in k],
+            keys=k).rename_axis(['Horizon', 'Stat'])
+        return hdf
+
+    def horizons_plot(self, n, figsize=(10, 5), suptitle=None):
+        """plot signal frequencies and cumulative plots for different horizons
+
+        :param n: number of groups
+        :type n: int
+
+        :param figsize: tuple specifying figure size width by height
+        :type figsize: (int, int)
+
+        :param suptitle: title of figure
+        :type suptitle: str
+
+        :rtype: plt.Figure
+        """
+        fig, axes = plt.subplots(2, 3, figsize=figsize)
+        fig.suptitle(suptitle, fontsize=12)
+        self.sig_frequency(axes[0, 0])
+        for i, k in enumerate((1, 2, 3, 6, 12), 1):
+            r, c = i // 3, i % 3
+            self.cumplot(n, k, ax=axes[r, c])
+        fig.autofmt_xdate()
+        return fig
+
+    def cumplot(self, n, k, ax=None, title=True):
+        """plot cumulative returns for n groups with horizon k
+
+        :param n: number of groups
+        :type n: int
+
+        :param k: periods between rebalancing (horizon)
+        :type k: int
+
+        :param ax: option axes object to plot onto
+        :type ax: matplotlib.axes._subplots.AxesSubplot
+
+        :param title: title of axes object
+        :type title: str
+
+        :rtype: matplotlib.axes._subplots.AxesSubplot
+        """
+        hr = self.horizon_returns(n, k, dropna=False)
+        title_fmt = 'Cum Return - Horizon = {}'.format
+        if title:
+            title = title_fmt(k)
+        ax = util.cumplot(
+            hr, ax=ax, colormap='jet', title=title
+        )
+        ax.title.set(size=10)
+        ax.get_xaxis().label.set_visible(False)
+        return ax
+
+    def sig_frequency(self, ax=None):
+        """plot bar chart showing the frequency that each security spends
+        at each rank
+
+        :param ax: option axes object to plot onto
+        :type ax: matplotlib.axes._subplots.AxesSubplot
+
+        :rtype: matplotlib.axes._subplots.AxesSubplot
+        """
+        ax = self.signals.rank(1).apply(
+            pd.value_counts,
+            normalize=True
+        ).T.plot.barh(
+            ax=ax,
+            stacked=True,
+            colormap='jet',
+            legend=False,
+            xlim=[0, 1],
+            title='Rank Frequency',
+            width=.95,
+        )
+        ax.get_xaxis().set_visible(False)
+        ax.tick_params(axis='y', which='major', labelsize=6)
+        return ax
+
+    def max_dd_plot(self, n, k):
+        """plot maximum draw downs for n groups over horizon k
 
 
+        :param n: number of groups
+        :type n: int
 
+        :param k: number of periods between rebalances (horizon)
+        :type k: int
+
+        :rtype: matplotlib.axes._subplots.AxesSubplot
+        """
+        hr = self.horizon_returns(n, k, False)
+        return simutil.max_dd_plot(hr, self.bench)

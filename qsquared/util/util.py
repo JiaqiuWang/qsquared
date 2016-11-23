@@ -17,6 +17,65 @@ def cumprod(df):
     return df.add(1).cumprod()
 
 
+def annual_prod(df):
+    """Assumes the values of `df` are returns and annualizes them by
+    adding one and then performing a rolling 1-year product.
+
+    :param df: input DataFrame assumed to be time series or returns
+      for groups *or* securities.
+    :type df: pd.DataFrame
+
+    :rtype: pd.DataFrame
+    """
+    from .simutil import estimate_frequency
+    freq = int(estimate_frequency(df.index))
+    return df.add(1).rolling(freq).apply(np.prod).sub(1)
+
+
+def annual_active_prod(df, benchmark):
+    """Assumes the values of `df` are returns and annualizes them by
+    adding one and then performing a rolling 1-year product.
+
+    :param df: input DataFrame assumed to be time series or returns
+      for groups *or* securities.
+    :type df: pd.DataFrame
+
+    :param benchmark: input DataFrame or Series of returns to compare
+      `df` returns against
+    :type benchmark: pd.DataFrame or pd.Series
+
+    :rtype: pd.DataFrame
+    """
+    from .simutil import estimate_frequency
+    freq = int(estimate_frequency(df.index))
+    c = annual_prod(df)
+    b = annual_prod(benchmark)
+    b_flag = isinstance(b, pd.Series)
+    axis = 1 - b_flag
+    return c.sub(b, axis=axis)
+
+
+def active_cumprod(df, benchmark):
+    """Assume the values of `df` and `benchmark` are returns.  Use `cumprod`
+    and take the difference between them.
+
+    :param df: input DataFrame assumed to be time series or returns
+      for groups *or* securities.
+    :type df: pd.DataFrame
+
+    :param benchmark: input DataFrame or Series of returns to compare
+      `df` returns against
+    :type benchmark: pd.DataFrame or pd.Series
+
+    :rtype: pd.DataFrame
+    """
+    c = cumprod(df)
+    b = cumprod(benchmark)
+    b_flag = isinstance(b, pd.Series)
+    axis = 1 - b_flag
+    return c.sub(b, axis=axis)
+
+
 def cumplot(df, *args, **kwargs):
     """Assumes the values of `df` are returns and cumulates them by
     adding one and then performing a cumulative product.  Subsequently
@@ -31,7 +90,16 @@ def cumplot(df, *args, **kwargs):
 
     :rtype: matplotlib.AxesSubplot
     """
-    return cumprod(df).plot(*args, **kwargs)
+    def format_yticks(ax, p=1, f=8):
+        from matplotlib.ticker import FuncFormatter
+        fmt = FuncFormatter(
+            lambda x, _: '{{:0.{}f}}%'.format(p).format(x * 100))
+        ax.tick_params(axis='y', which='major', labelsize=f)
+        ax.yaxis.set_major_formatter(fmt)
+        ax.legend(ncol=2, loc='upper left', fontsize=f)
+        return ax
+
+    return format_yticks(cumprod(df).sub(1).plot(*args, **kwargs))
 
 
 def cumprod_ibyk(returns, i, k):
@@ -80,4 +148,5 @@ def floated(weights, returns, normalize=True):
     if normalize:
         weights = weights.div(weights.sum(1), 0)
     return weights
+
 
